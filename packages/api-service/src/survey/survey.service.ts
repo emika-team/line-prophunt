@@ -71,9 +71,15 @@ export class SurveyService {
     // Check if already has active session
     const existingSession = await this.getActiveSession(customer.id, groupId);
     if (existingSession) {
-      await this.proxyClient.sendTextMessage(
+      // Send Flex Message for rating
+      const flexContent = this.proxyClient.createSurveyRatingFlex(
+        'ให้คะแนนบริการ',
+        this.surveyQuestion,
+      );
+      await this.proxyClient.sendFlexMessage(
         callback,
         traceId,
+        flexContent,
         this.surveyQuestion,
       );
       return;
@@ -87,10 +93,15 @@ export class SurveyService {
       status: SurveySessionStatus.WAITING_RESPONSE,
     });
 
-    // Send survey question
-    await this.proxyClient.sendTextMessage(
+    // Send Flex Message for rating
+    const flexContent = this.proxyClient.createSurveyRatingFlex(
+      'ให้คะแนนบริการ',
+      this.surveyQuestion,
+    );
+    await this.proxyClient.sendFlexMessage(
       callback,
       traceId,
+      flexContent,
       this.surveyQuestion,
     );
   }
@@ -128,10 +139,15 @@ export class SurveyService {
       { status: SurveySessionStatus.COMPLETED },
     );
 
-    // Send thank you
-    await this.proxyClient.sendTextMessage(
+    // Send thank you with Flex Message
+    const thankYouFlex = this.proxyClient.createThankYouFlex(
+      this.surveyThankYou,
+      score,
+    );
+    await this.proxyClient.sendFlexMessage(
       callback,
       traceId,
+      thankYouFlex,
       this.surveyThankYou,
     );
   }
