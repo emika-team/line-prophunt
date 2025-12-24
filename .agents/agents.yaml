@@ -1,0 +1,18 @@
+# LINE PropHunt - Multi-Agent Configuration
+# Agent 1: API Service (NestJS + Mongoose - Game + Survey)
+# Agent 2: Admin UI (React + Vite + TailwindCSS)
+agents:
+  1:
+    branch: agent-1-api
+    worktree_path: agents/1
+    model: default
+    description: "API Service Agent - พัฒนา NestJS + Mongoose (Game + Survey modules)"
+    focus:
+      - packages/api-service/**
+  2:
+    branch: agent-2-admin
+    worktree_path: agents/2
+    model: default
+    description: "Admin UI Agent - พัฒนา React + Vite + TailwindCSS (Game Admin Only)"
+    focus:
+      - packages/admin-ui/**
