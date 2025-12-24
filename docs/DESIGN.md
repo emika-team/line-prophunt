@@ -1,10 +1,12 @@
-# LINE Mini Apps - Game & Survey Services
+# LINE Mini Apps - Game & Survey Service
 
 ## Overview
-สร้าง 2 services แยกอิสระจากกัน integrate กับ **livechat-next** (Proxy):
+สร้าง **1 API Service** (รวม Game + Survey) integrate กับ **livechat-next** (Proxy):
 
-1. **Game Service** - เกมจับผิดภาพสำหรับ broadcast campaigns (MongoDB)
-2. **Survey Service** - ถาม-ตอบ survey ใช้ได้หลาย case (MongoDB)
+- **Game Module** - เกมจับผิดภาพสำหรับ broadcast campaigns
+- **Survey Module** - ถาม-ตอบ survey ใช้ได้หลาย case
+
+ทั้งสอง module อยู่ใน service เดียวกัน share webhook handler และ proxy-client
 
 ---
 
@@ -13,17 +15,18 @@
 ## ใช้ multi-agent-workflow-kit พัฒนาโปรเจค
 
 ### Concept
-ใช้ 3 AI agents ทำงานพร้อมกัน แต่ละ agent รับผิดชอบ package ของตัวเอง:
+ใช้ 2 AI agents ทำงานพร้อมกัน แต่ละ agent รับผิดชอบ package ของตัวเอง:
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    tmux session (maw)                       │
-├───────────────────┬───────────────────┬─────────────────────┤
-│   Agent 1         │   Agent 2         │   Agent 3           │
-│   game-service    │   survey-service  │   admin-ui          │
-│   branch: agent-1 │   branch: agent-2 │   branch: agent-3   │
-│   NestJS+Mongoose │   NestJS+Mongoose │   React + Vite      │
-└───────────────────┴───────────────────┴─────────────────────┘
+┌─────────────────────────────────────────────────┐
+│              tmux session (maw)                 │
+├───────────────────────┬─────────────────────────┤
+│   Agent 1             │   Agent 2               │
+│   api-service         │   admin-ui              │
+│   branch: agent-1-api │   branch: agent-2-admin │
+│   NestJS+Mongoose     │   React + Vite          │
+│   (Game + Survey)     │   (Game Admin Only)     │
+└───────────────────────┴─────────────────────────┘
 ```
 
 ### Prerequisites
@@ -55,28 +58,23 @@ maw attach
 
 ### Agent Configuration
 
-สร้างไฟล์ `.agents/agents.yaml`:
+ไฟล์ `.agents/agents.yaml`:
 
 ```yaml
 agents:
-  - id: 1
-    name: "Game Service Agent"
-    branch: "agent-1-game"
-    description: "พัฒนา Game Service (NestJS + Mongoose + MongoDB)"
+  1:
+    branch: agent-1-api
+    worktree_path: agents/1
+    model: default
+    description: "API Service Agent - พัฒนา NestJS + Mongoose (Game + Survey modules)"
     focus:
-      - packages/game-service/**
+      - packages/api-service/**
 
-  - id: 2
-    name: "Survey Service Agent"
-    branch: "agent-2-survey"
-    description: "พัฒนา Survey Service (NestJS + Mongoose + MongoDB)"
-    focus:
-      - packages/survey-service/**
-
-  - id: 3
-    name: "Admin UI Agent"
-    branch: "agent-3-admin"
-    description: "พัฒนา Admin UI (React + Vite + TailwindCSS)"
+  2:
+    branch: agent-2-admin
+    worktree_path: agents/2
+    model: default
+    description: "Admin UI Agent - พัฒนา React + Vite + TailwindCSS (Game Admin Only)"
     focus:
       - packages/admin-ui/**
 ```
@@ -88,9 +86,8 @@ agents:
 maw attach
 
 # สั่งงาน agent
-maw hey 1 "สร้าง NestJS project ใน packages/game-service"
-maw hey 2 "สร้าง NestJS project ใน packages/survey-service"
-maw hey 3 "สร้าง Vite + React project ใน packages/admin-ui"
+maw hey 1 "สร้าง NestJS project ใน packages/api-service พร้อม Game + Survey modules"
+maw hey 2 "สร้าง Vite + React project ใน packages/admin-ui"
 
 # สั่งทุก agent พร้อมกัน
 maw send "ติดตั้ง dependencies และทดสอบ"
@@ -109,13 +106,12 @@ maw warp 1
 
 ```
 1. maw attach                    # เข้า session
-2. maw hey 1 "task for game"     # สั่งงาน agent 1
-3. maw hey 2 "task for survey"   # สั่งงาน agent 2
-4. maw hey 3 "task for admin"    # สั่งงาน agent 3
-5. (รอ agents ทำงาน)
-6. maw sync                      # merge changes
-7. ทดสอบ integration
-8. commit & push
+2. maw hey 1 "task for api"      # สั่งงาน agent 1 (API Service)
+3. maw hey 2 "task for admin"    # สั่งงาน agent 2 (Admin UI)
+4. (รอ agents ทำงาน)
+5. maw sync                      # merge changes
+6. ทดสอบ integration
+7. commit & push
 ```
 
 ### Directory Structure หลัง Setup
@@ -126,12 +122,10 @@ line-prophunt/
 │   └── agents.yaml              # Agent configuration
 ├── .envrc                       # direnv config
 ├── agents/
-│   ├── 1/                       # Agent 1 worktree (game-service)
-│   ├── 2/                       # Agent 2 worktree (survey-service)
-│   └── 3/                       # Agent 3 worktree (admin-ui)
+│   ├── 1/                       # Agent 1 worktree (api-service)
+│   └── 2/                       # Agent 2 worktree (admin-ui)
 ├── packages/
-│   ├── game-service/
-│   ├── survey-service/
+│   ├── api-service/             # Game + Survey รวมกัน
 │   └── admin-ui/
 ├── docs/
 │   └── DESIGN.md
@@ -143,38 +137,36 @@ line-prophunt/
 ## System Architecture
 
 ```
-                         ┌─────────────────────┐
-                         │   Game Service      │
-                         │   (เกมจับผิดภาพ)     │
-                         │   + MongoDB         │
-                         └──────────▲──────────┘
-                                    │
-LINE  ←→  livechat-next (Proxy) ────┼────→  Route by keyword/trigger
-                                    │
-                         ┌──────────▼──────────┐
-                         │   Survey Service    │
-                         │   (ถาม-ตอบ Survey)   │
-                         │   + MongoDB         │
-                         └─────────────────────┘
+                         ┌─────────────────────────┐
+                         │      API Service        │
+                         │  ┌─────────┬─────────┐  │
+                         │  │  Game   │ Survey  │  │
+                         │  │ Module  │ Module  │  │
+                         │  └─────────┴─────────┘  │
+                         │      + MongoDB          │
+                         └───────────▲─────────────┘
+                                     │
+LINE  ←→  livechat-next (Proxy) ─────┘  Route by keyword/trigger
 ```
 
 **Use Cases:**
 - **Game**: Admin broadcast เกม → ลูกค้าเล่น → รอรับรางวัล
-- **Survey**: หลังแชทจบ / หลังเล่นเกม / trigger อื่นๆ → ถาม survey → ตอบในแชท → บันทึกลง DB
+- **Survey**: หลังแชทจบ / trigger จาก Proxy → ถาม survey → ตอบในแชท → บันทึก
+
+**หมายเหตุ:** ทั้งสอง module อยู่ใน service เดียวกัน share webhook + proxy-client + database
 
 ## Tech Stack
 
-### Game Service
+### API Service (Game + Survey)
 - **Runtime**: Node.js + TypeScript
 - **Framework**: NestJS
 - **Database**: MongoDB + Mongoose (เหมือน livechat-next)
-- **Admin UI**: React (Vite) + TailwindCSS
+- **Modules**: Game, Survey, Webhook, ProxyClient
 
-### Survey Service
-- **Runtime**: Node.js + TypeScript
-- **Framework**: NestJS
-- **Database**: MongoDB + Mongoose (เก็บ survey responses)
-- **Admin UI**: ไม่ต้อง (config ผ่าน Proxy หรือ env)
+### Admin UI (Game Only)
+- **Framework**: React 18 + TypeScript
+- **Build Tool**: Vite
+- **Styling**: TailwindCSS + shadcn/ui
 
 ---
 
@@ -223,20 +215,20 @@ LINE  ←→  livechat-next (Proxy) ────┼────→  Route by key
 
 ---
 
-# SERVICE 1: Game Service (MongoDB)
+# API SERVICE
 
-## Game Flow
+## Game Module Flow
 
 ```
 Admin broadcast เกม → User ได้รับข้อความเชิญเล่น
-User พิมพ์ "เล่น" หรือ keyword → Proxy forward → Game Service
-Game Service ส่งรูป 3 ช่อง + "ตอบ 1, 2, หรือ 3"
-User พิมพ์ "2" → Game Service ตรวจคำตอบ
+User พิมพ์ "เล่น" หรือ keyword → Proxy forward → API Service
+API Service ส่งรูป 3 ช่อง + "ตอบ 1, 2, หรือ 3"
+User พิมพ์ "2" → API Service ตรวจคำตอบ
 ถูก → "ยินดีด้วย! รอ admin แจ้งรางวัล"
 ผิด → "เสียใจด้วย ลองใหม่นะ!"
 ```
 
-## Database Schema (Game Service)
+## Database Schema (Game Module)
 
 | Collection | Purpose |
 |------------|---------|
@@ -251,9 +243,7 @@ IDLE → PLAYING → ANSWERED
 
 ---
 
-# SERVICE 2: Survey Service (MongoDB)
-
-## Survey Flow
+## Survey Module Flow
 
 ```
 Trigger (หลังแชทจบ/หลังเกม/manual) → Proxy เรียก Survey Service
@@ -261,7 +251,7 @@ Survey Service ส่งข้อความ "ให้คะแนน 1-5"
 User พิมพ์ "5" → Survey Service บันทึกลง MongoDB + ตอบ "ขอบคุณ!" → จบ
 ```
 
-## Database Schema (Survey Service)
+## Database Schema (Survey Module)
 
 | Collection | Purpose |
 |------------|---------|
@@ -276,7 +266,7 @@ IDLE → WAITING_RESPONSE → COMPLETED
 ## Survey Config (Environment)
 
 ```env
-MONGODB_URI=mongodb://localhost:27017/prophunt-survey
+MONGODB_URI=mongodb://localhost:27017/prophunt
 SURVEY_QUESTION="กรุณาให้คะแนนบริการ 1-5"
 SURVEY_THANK_YOU="ขอบคุณสำหรับความคิดเห็น!"
 ```
@@ -289,50 +279,53 @@ SURVEY_THANK_YOU="ขอบคุณสำหรับความคิดเ�
 line-prophunt/
 ├── packages/
 │   │
-│   ├── game-service/             # SERVICE 1: เกมจับผิดภาพ (MongoDB)
+│   ├── api-service/              # API Service (Game + Survey รวมกัน)
 │   │   ├── src/
 │   │   │   ├── main.ts
 │   │   │   ├── app.module.ts
-│   │   │   ├── webhook/          # รับ webhook จาก Proxy
-│   │   │   ├── game/             # Game CRUD + logic
-│   │   │   │   ├── schemas/game.schema.ts
-│   │   │   │   └── game.service.ts
-│   │   │   ├── player/           # Player management
-│   │   │   │   ├── schemas/player.schema.ts
-│   │   │   │   └── player.service.ts
-│   │   │   ├── session/          # Game sessions
-│   │   │   │   ├── schemas/session.schema.ts
-│   │   │   │   └── session.service.ts
-│   │   │   ├── proxy-client/     # ส่ง response กลับ
-│   │   │   └── admin/            # Admin API
-│   │   ├── Dockerfile
-│   │   └── package.json
-│   │
-│   ├── survey-service/           # SERVICE 2: Survey (MongoDB)
-│   │   ├── src/
-│   │   │   ├── main.ts
-│   │   │   ├── app.module.ts
-│   │   │   ├── webhook/          # รับ webhook จาก Proxy
-│   │   │   ├── survey/           # Survey logic
+│   │   │   │
+│   │   │   ├── webhook/          # Shared: รับ webhook จาก Proxy
+│   │   │   │   ├── webhook.controller.ts
+│   │   │   │   └── webhook.module.ts
+│   │   │   │
+│   │   │   ├── proxy-client/     # Shared: ส่ง response กลับ
+│   │   │   │   ├── proxy-client.service.ts
+│   │   │   │   └── proxy-client.module.ts
+│   │   │   │
+│   │   │   ├── game/             # Game Module
+│   │   │   │   ├── schemas/
+│   │   │   │   │   ├── player.schema.ts
+│   │   │   │   │   ├── game.schema.ts
+│   │   │   │   │   └── game-session.schema.ts
+│   │   │   │   ├── game.service.ts
+│   │   │   │   ├── game.controller.ts
+│   │   │   │   └── game.module.ts
+│   │   │   │
+│   │   │   ├── survey/           # Survey Module
 │   │   │   │   ├── schemas/
 │   │   │   │   │   ├── survey-session.schema.ts
 │   │   │   │   │   └── survey-response.schema.ts
-│   │   │   │   └── survey.service.ts
-│   │   │   └── proxy-client/     # ส่ง response กลับ
+│   │   │   │   ├── survey.service.ts
+│   │   │   │   └── survey.module.ts
+│   │   │   │
+│   │   │   └── admin/            # Admin API (Game only)
+│   │   │       ├── admin.controller.ts
+│   │   │       └── admin.module.ts
+│   │   │
 │   │   ├── Dockerfile
 │   │   └── package.json
 │   │
-│   └── admin-ui/                 # Admin UI (สำหรับ Game Service)
+│   └── admin-ui/                 # Admin UI (สำหรับ Game)
 │       ├── src/
 │       │   ├── pages/
 │       │   │   ├── Dashboard.tsx
 │       │   │   ├── Games.tsx
-│       │   │   └── Winners.tsx
+│       │   │   └── Sessions.tsx
 │       │   └── App.tsx
 │       ├── Dockerfile
 │       └── package.json
 │
-├── docker-compose.yml            # รัน all services
+├── docker-compose.yml            # รัน services
 ├── package.json                  # Workspace root
 └── README.md
 ```
@@ -342,27 +335,32 @@ line-prophunt/
 ## Implementation Steps
 
 ### Phase 1: Project Setup (Monorepo)
-- [ ] สร้าง monorepo structure (npm workspaces / pnpm)
-- [ ] Setup shared configs (tsconfig, eslint)
+- [x] สร้าง monorepo structure (npm workspaces)
+- [x] Setup multi-agent-workflow-kit
 - [ ] Setup Docker และ docker-compose
 
 ---
 
-### Phase 2: Game Service
+### Phase 2: API Service (Game + Survey)
 
 **2.1 Core Setup**
-- [ ] สร้าง NestJS project (game-service)
+- [ ] สร้าง NestJS project (api-service)
 - [ ] Setup MongoDB + Mongoose
-- [ ] สร้าง webhook controller + signature verify
-- [ ] สร้าง proxy-client service
+- [ ] สร้าง Webhook module (shared) + signature verify
+- [ ] สร้าง ProxyClient module (shared)
 
-**2.2 Game Logic**
+**2.2 Game Module**
 - [ ] Player schema + service
 - [ ] Game schema + service (CRUD)
-- [ ] Session schema + service (state management)
+- [ ] GameSession schema + service (state management)
 - [ ] ส่งรูปเกม + ตรวจคำตอบ
 
-**2.3 Admin API**
+**2.3 Survey Module**
+- [ ] SurveySession schema + service
+- [ ] SurveyResponse schema + service
+- [ ] Survey logic (ถาม → รอตอบ → บันทึก → ขอบคุณ)
+
+**2.4 Admin API (Game only)**
 - [ ] CRUD Games
 - [ ] ดูรายการผู้ชนะ
 - [ ] Mark จ่ายรางวัลแล้ว
@@ -370,18 +368,7 @@ line-prophunt/
 
 ---
 
-### Phase 3: Survey Service (MongoDB)
-
-- [ ] สร้าง NestJS project (survey-service)
-- [ ] Setup MongoDB + Mongoose
-- [ ] สร้าง Survey schemas (survey-session, survey-response)
-- [ ] Webhook controller + proxy-client
-- [ ] Survey logic (ถาม → รอตอบ → บันทึก → ขอบคุณ)
-- [ ] Config ผ่าน environment variables
-
----
-
-### Phase 4: Admin UI (Game Service เท่านั้น)
+### Phase 3: Admin UI (Game Only)
 
 - [ ] สร้าง React + Vite + TailwindCSS
 - [ ] Dashboard page
@@ -390,12 +377,10 @@ line-prophunt/
 
 ---
 
-### Phase 5: Deploy
+### Phase 4: Deploy
 
-- [ ] Docker build ทั้ง 3 services
-- [ ] ลงทะเบียน webhooks ที่ livechat-next:
-  - Game Service webhook
-  - Survey Service webhook
+- [ ] Docker build ทั้ง 2 packages (api-service, admin-ui)
+- [ ] ลงทะเบียน webhook ที่ livechat-next (1 webhook สำหรับทั้ง Game + Survey)
 - [ ] Deploy to VPS
 
 ---
@@ -410,12 +395,11 @@ line-prophunt/
 
 Proxy รองรับส่งรูปภาพได้ เราสามารถส่ง:
 
-| Step | Message จาก Game Service |
+| Step | Message จาก API Service |
 |------|--------------------------|
 | **Start** | รูปเกม (3 ช่อง) + "หาจุดผิด! ตอบ 1, 2, หรือ 3" |
 | **Win** | "ยินดีด้วย! ตอบถูกแล้ว รอ admin แจ้งรางวัล" |
 | **Lose** | "เสียใจด้วย ตอบผิด ลองใหม่นะ!" |
-| **Survey** | "ให้คะแนนความพึงพอใจ 1-5" |
 | **Done** | "ขอบคุณที่ร่วมสนุก!" |
 
 ### Response Format to Proxy
@@ -431,28 +415,20 @@ Proxy รองรับส่งรูปภาพได้ เราสาม�
 
 ## Key Files
 
-### Game Service
+### API Service
 | File | Description |
 |------|-------------|
-| `packages/game-service/src/webhook/webhook.controller.ts` | รับ webhook จาก Proxy |
-| `packages/game-service/src/proxy-client/proxy-client.service.ts` | ส่ง response กลับ Proxy |
-| `packages/game-service/src/session/session.service.ts` | จัดการ player state |
-| `packages/game-service/src/game/game.service.ts` | Game logic |
-| `packages/game-service/src/admin/admin.controller.ts` | Admin REST API |
-| `packages/game-service/src/*/schemas/*.schema.ts` | Mongoose schemas |
-
-### Survey Service
-| File | Description |
-|------|-------------|
-| `packages/survey-service/src/webhook/webhook.controller.ts` | รับ webhook จาก Proxy |
-| `packages/survey-service/src/survey/survey.service.ts` | Survey logic + MongoDB |
-| `packages/survey-service/src/survey/schemas/survey-session.schema.ts` | Session state schema |
-| `packages/survey-service/src/survey/schemas/survey-response.schema.ts` | Response data schema |
-| `packages/survey-service/src/proxy-client/proxy-client.service.ts` | ส่ง response กลับ Proxy |
+| `packages/api-service/src/webhook/webhook.controller.ts` | รับ webhook จาก Proxy (shared) |
+| `packages/api-service/src/proxy-client/proxy-client.service.ts` | ส่ง response กลับ Proxy (shared) |
+| `packages/api-service/src/game/game.service.ts` | Game logic |
+| `packages/api-service/src/game/schemas/*.schema.ts` | Game mongoose schemas |
+| `packages/api-service/src/survey/survey.service.ts` | Survey logic |
+| `packages/api-service/src/survey/schemas/*.schema.ts` | Survey mongoose schemas |
+| `packages/api-service/src/admin/admin.controller.ts` | Admin REST API (Game only) |
 
 ---
 
-## Admin API Endpoints (Game Service)
+## Admin API Endpoints (Game Only)
 
 ```
 GET    /api/admin/dashboard        # สถิติรวม
@@ -481,27 +457,27 @@ GET    /api/admin/players          # รายการผู้เล่น
 
 ## Environment Variables
 
-### Game Service
+### API Service
 ```env
 MONGODB_URI=mongodb://localhost:27017/prophunt
 WEBHOOK_SECRET=xxx              # สำหรับ verify signature จาก Proxy
 PORT=3001
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=xxx
-```
 
-### Survey Service
-```env
-MONGODB_URI=mongodb://localhost:27017/prophunt-survey
-WEBHOOK_SECRET=xxx
-PORT=3002
+# Survey Config
 SURVEY_QUESTION="กรุณาให้คะแนนบริการของเรา 1-5 คะแนน"
 SURVEY_THANK_YOU="ขอบคุณสำหรับความคิดเห็นครับ!"
 ```
 
+### Admin UI
+```env
+VITE_API_URL=http://localhost:3001
+```
+
 ---
 
-## Admin UI Design (Game Service Only)
+## Admin UI Design (Game Only)
 
 ### Tech Stack
 - **Framework**: React 18 + TypeScript
@@ -573,13 +549,13 @@ packages/admin-ui/
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Dashboard                                              [Logout] │
+│  Dashboard                                            [Logout]  │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌────────────┐│
-│  │  Players    │ │  Sessions   │ │  Winners    │ │  Avg       ││
-│  │    1,234    │ │    5,678    │ │    890      │ │    4.2     ││
-│  │   +12%      │ │   +8%       │ │   +15%      │ │  Survey    ││
+│  │  Players    │ │  Sessions   │ │  Winners    │ │  Win       ││
+│  │    1,234    │ │    5,678    │ │    890      │ │   Rate     ││
+│  │   +12%      │ │   +8%       │ │   +15%      │ │   45%      ││
 │  └─────────────┘ └─────────────┘ └─────────────┘ └────────────┘│
 │                                                                 │
 │  ┌─────────────────────────────┐ ┌─────────────────────────────┐│
@@ -590,21 +566,13 @@ packages/admin-ui/
 │  │                             │ │  - somsak - Game A - 10:20  ││
 │  │                             │ │  [View All]                 ││
 │  └─────────────────────────────┘ └─────────────────────────────┘│
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────────┐│
-│  │ Survey Scores Distribution                                  ││
-│  │                                                             ││
-│  │   [Bar Chart: 1 2 3 4 5]                                    ││
-│  │                                                             ││
-│  └─────────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 **Components:**
-- `StatsCard`: แสดงตัวเลขสถิติ + % เปลี่ยนแปลง
+- `StatsCard`: แสดงตัวเลขสถิติ + % เปลี่ยนแปลง (Players, Sessions, Winners, Win Rate)
 - `SessionsChart`: Line chart แสดง sessions ต่อวัน
 - `RecentWinners`: รายการผู้ชนะล่าสุด 5 คน
-- `SurveyChart`: Bar chart แสดงการกระจายคะแนน
 
 ---
 
@@ -612,7 +580,7 @@ packages/admin-ui/
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Games                                         [+ Create Game]  │
+│  Games                                       [+ Create Game]    │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐   │
@@ -723,34 +691,34 @@ packages/admin-ui/
 
 ### UI Implementation Steps
 
-#### Phase 4: Admin UI (Detailed)
+#### Phase 3: Admin UI (Detailed)
 
-**4.1 Setup**
+**3.1 Setup**
 - [ ] สร้าง Vite + React + TypeScript project
 - [ ] Setup TailwindCSS + shadcn/ui
 - [ ] Setup React Router
 - [ ] Setup TanStack Query
 - [ ] สร้าง API client (axios)
 
-**4.2 Layout & Auth**
+**3.2 Layout & Auth**
 - [ ] สร้าง Layout component (Sidebar)
 - [ ] สร้าง Login page
 - [ ] Setup authentication (JWT)
 - [ ] Protected routes
 
-**4.3 Dashboard**
+**3.3 Dashboard**
 - [ ] StatsCard component (Players, Sessions, Winners)
 - [ ] Sessions chart (Recharts) - last 7 days
 - [ ] Recent winners list
 
-**4.4 Games Page**
+**3.4 Games Page**
 - [ ] Games grid view
 - [ ] Game card component
 - [ ] Create/Edit game modal
 - [ ] Image uploader component
 - [ ] Position selector (1/2/3)
 
-**4.5 Sessions Page**
+**3.5 Sessions Page**
 - [ ] Sessions table (TanStack Table)
 - [ ] Filters (Winners only, date range)
 - [ ] Mark reward paid button
