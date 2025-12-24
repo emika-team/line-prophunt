@@ -4,6 +4,7 @@ import { Layout } from '@/components/layout/Layout'
 import { Dashboard } from '@/pages/Dashboard'
 import { Games } from '@/pages/Games'
 import { Sessions } from '@/pages/Sessions'
+import { Survey } from '@/pages/Survey'
 import { Login } from '@/pages/Login'
 import { authApi } from '@/api/auth'
 
@@ -40,6 +41,7 @@ function App() {
             <Route index element={<Dashboard />} />
             <Route path="games" element={<Games />} />
             <Route path="sessions" element={<Sessions />} />
+            <Route path="survey" element={<Survey />} />
           </Route>
         </Routes>
       </BrowserRouter>

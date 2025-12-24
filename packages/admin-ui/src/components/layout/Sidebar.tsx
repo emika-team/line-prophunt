@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Gamepad2, Users, LogOut } from 'lucide-react'
+import { LayoutDashboard, Gamepad2, Users, LogOut, Star } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { authApi } from '@/api/auth'
@@ -8,6 +8,7 @@ const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/games', icon: Gamepad2, label: 'Games' },
   { to: '/sessions', icon: Users, label: 'Sessions' },
+  { to: '/survey', icon: Star, label: 'Survey' },
 ]
 
 export function Sidebar() {
