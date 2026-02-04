@@ -1,14 +1,12 @@
-import { Controller, Post, Body, Headers, HttpCode } from '@nestjs/common';
+import { Controller, Post, Body, Headers, HttpCode, Logger } from '@nestjs/common';
 import { WebhookPayloadDto } from './dto/webhook-payload.dto';
 import { GameService } from '../game/game.service';
-import { SurveyService } from '../survey/survey.service';
 
 @Controller('webhook')
 export class WebhookController {
-  constructor(
-    private readonly gameService: GameService,
-    private readonly surveyService: SurveyService,
-  ) {}
+  private readonly logger = new Logger(WebhookController.name);
+
+  constructor(private readonly gameService: GameService) {}
 
   @Post()
   @HttpCode(200)
@@ -17,42 +15,33 @@ export class WebhookController {
     @Headers('x-webhook-signature') signature: string,
     @Headers('x-webhook-event') event: string,
   ) {
-    const { data } = payload;
-    const message = data.chat.message.trim().toLowerCase();
+    this.logger.log(`Webhook received: event=${payload.event}`);
 
-    // Check if user is in survey session
-    const surveySession = await this.surveyService.getActiveSession(
-      data.customer.id,
-      data.groupId,
-    );
-
-    if (surveySession) {
-      await this.surveyService.handleMessage(data);
-      return { status: 'ok' };
+    // Handle postback event from LINE (user clicked on game)
+    if (payload.event === 'postback' && payload.data) {
+      return this.handlePostback(payload);
     }
 
-    // Check if user is in game session or wants to play
-    const playerSession = await this.gameService.getPlayerState(
-      data.customer.id,
-      data.groupId,
-    );
+    return { status: 'ok', handled: false };
+  }
 
-    if (playerSession?.state === 'PLAYING') {
-      await this.gameService.handleAnswer(data);
-      return { status: 'ok' };
-    }
+  private async handlePostback(payload: WebhookPayloadDto) {
+    const params = new URLSearchParams(payload.data);
+    const action = params.get('action');
+    const position = params.get('position');
+    const gameId = params.get('gameId');
 
-    // Check for game trigger keywords
-    const gameKeywords = ['เล่น', 'เล่นเกม', 'play', 'game'];
-    if (gameKeywords.includes(message)) {
-      await this.gameService.startGame(data);
-      return { status: 'ok' };
-    }
+    this.logger.log(`Postback: action=${action}, position=${position}, gameId=${gameId}`);
 
-    // Check for survey trigger
-    const surveyKeywords = ['survey', 'แบบสอบถาม', 'ให้คะแนน'];
-    if (surveyKeywords.includes(message)) {
-      await this.surveyService.startSurvey(data);
+    if (action === 'answer' && position && gameId) {
+      const customKey = payload.key_value;
+
+      if (!customKey) {
+        this.logger.warn('No customKey in postback payload');
+        return { status: 'ok', handled: false };
+      }
+
+      await this.gameService.handlePostbackAnswer(customKey, parseInt(position, 10), gameId);
       return { status: 'ok' };
     }
 

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { gamesApi, type CreateGameDto, type UpdateGameDto } from '@/api/games'
+import { gamesApi, type CreateGameDto, type UpdateGameDto, type BroadcastGameDto } from '@/api/games'
 
 export function useGames() {
   const queryClient = useQueryClient()
@@ -31,6 +31,11 @@ export function useGames() {
     },
   })
 
+  const broadcastMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: BroadcastGameDto }) =>
+      gamesApi.broadcast(id, data),
+  })
+
   return {
     games: gamesQuery.data ?? [],
     isLoading: gamesQuery.isLoading,
@@ -38,8 +43,10 @@ export function useGames() {
     createGame: createMutation.mutate,
     updateGame: updateMutation.mutate,
     deleteGame: deleteMutation.mutate,
+    broadcastGame: broadcastMutation.mutateAsync,
     isCreating: createMutation.isPending,
     isUpdating: updateMutation.isPending,
     isDeleting: deleteMutation.isPending,
+    isBroadcasting: broadcastMutation.isPending,
   }
 }

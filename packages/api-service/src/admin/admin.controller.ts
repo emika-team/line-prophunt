@@ -10,36 +10,70 @@ import {
   HttpCode,
   HttpStatus,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { GameService } from '../game/game.service';
-import { SurveyService } from '../survey/survey.service';
 import { CreateGameDto } from './dto/create-game.dto';
 import { UpdateGameDto } from './dto/update-game.dto';
+import { CreateTemplateDto } from './dto/create-template.dto';
 import { UpdateSessionDto } from './dto/update-session.dto';
+import { BroadcastGameDto } from './dto/broadcast-game.dto';
 import { RewardStatus } from '../game/schemas/game-session.schema';
 
-@Controller('api/admin')
+@Controller('admin')
 export class AdminController {
-  constructor(
-    private readonly gameService: GameService,
-    private readonly surveyService: SurveyService,
-  ) {}
+  constructor(private readonly gameService: GameService) {}
 
   // Dashboard
   @Get('dashboard')
   async getDashboard(@Query('groupId') groupId?: string) {
-    const [gameStats, surveyStats] = await Promise.all([
-      this.gameService.getDashboardStats(groupId),
-      this.surveyService.getSurveyStats(groupId),
-    ]);
-
-    return {
-      game: gameStats,
-      survey: surveyStats,
-    };
+    const gameStats = await this.gameService.getDashboardStats(groupId);
+    return { game: gameStats };
   }
 
-  // Games CRUD
+  // ============ Templates CRUD ============
+  @Get('templates')
+  async getTemplates() {
+    return this.gameService.findAllTemplates();
+  }
+
+  @Get('templates/:id')
+  async getTemplate(@Param('id') id: string) {
+    const template = await this.gameService.findTemplateById(id);
+    if (!template) {
+      throw new NotFoundException('Template not found');
+    }
+    return template;
+  }
+
+  @Post('templates')
+  @HttpCode(HttpStatus.CREATED)
+  async createTemplate(@Body() createTemplateDto: CreateTemplateDto) {
+    return this.gameService.createTemplate(createTemplateDto);
+  }
+
+  @Put('templates/:id')
+  async updateTemplate(
+    @Param('id') id: string,
+    @Body() updateTemplateDto: Partial<CreateTemplateDto>,
+  ) {
+    const template = await this.gameService.updateTemplate(id, updateTemplateDto);
+    if (!template) {
+      throw new NotFoundException('Template not found');
+    }
+    return template;
+  }
+
+  @Delete('templates/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteTemplate(@Param('id') id: string) {
+    const deleted = await this.gameService.deleteTemplate(id);
+    if (!deleted) {
+      throw new NotFoundException('Template not found');
+    }
+  }
+
+  // ============ Games CRUD ============
   @Get('games')
   async getGames() {
     return this.gameService.findAllGames();
@@ -87,6 +121,8 @@ export class AdminController {
     @Query('winnersOnly') winnersOnly?: string,
     @Query('rewardStatus') rewardStatus?: RewardStatus,
     @Query('groupId') groupId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
     const filters: {
       isCorrect?: boolean;
@@ -104,7 +140,34 @@ export class AdminController {
       filters.groupId = groupId;
     }
 
-    return this.gameService.findAllSessions(filters);
+    const pageNum = parseInt(page || '1', 10);
+    const limitNum = parseInt(limit || '10', 10);
+
+    const sessions = await this.gameService.findAllSessions(filters);
+    
+    // Transform to expected format
+    const transformedSessions = sessions.map((session: any) => ({
+      _id: session._id,
+      player: session.playerId,
+      game: session.gameId,
+      answer: session.answer,
+      isCorrect: session.isCorrect,
+      rewardStatus: session.rewardStatus?.toLowerCase(),
+      createdAt: session.createdAt,
+    }));
+
+    const total = transformedSessions.length;
+    const totalPages = Math.ceil(total / limitNum);
+    const startIndex = (pageNum - 1) * limitNum;
+    const paginatedData = transformedSessions.slice(startIndex, startIndex + limitNum);
+
+    return {
+      data: paginatedData,
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages,
+    };
   }
 
   @Put('sessions/:id')
@@ -128,14 +191,23 @@ export class AdminController {
     return this.gameService.findAllPlayers(groupId);
   }
 
-  // Survey Responses
-  @Get('survey/responses')
-  async getSurveyResponses(@Query('groupId') groupId?: string) {
-    return this.surveyService.findAllResponses(groupId);
-  }
-
-  @Get('survey/stats')
-  async getSurveyStats(@Query('groupId') groupId?: string) {
-    return this.surveyService.getSurveyStats(groupId);
+  // Broadcast Game
+  @Post('games/:id/broadcast')
+  async broadcastGame(
+    @Param('id') id: string,
+    @Body() broadcastDto: BroadcastGameDto,
+  ) {
+    try {
+      return await this.gameService.broadcastGame(
+        id,
+        broadcastDto.customKeys,
+        broadcastDto.customMessage,
+      );
+    } catch (error) {
+      if (error.message === 'Game not found') {
+        throw new NotFoundException('Game not found');
+      }
+      throw new BadRequestException(error.message);
+    }
   }
 }

@@ -14,6 +14,9 @@ export class Player {
   @Prop({ required: true, index: true })
   customerId: string;
 
+  @Prop({ type: String, index: true, sparse: true })
+  customKey?: string;
+
   @Prop({ required: true })
   displayName: string;
 

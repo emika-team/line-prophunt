@@ -1,10 +1,22 @@
 import apiClient from './client'
+import type { GameTemplate } from './templates'
+
+export interface CustomZone {
+  x: number
+  y: number
+  width: number
+  height: number
+}
 
 export interface Game {
   _id: string
   name: string
+  templateId: GameTemplate | string
   imageUrl: string
-  correctPosition: 1 | 2 | 3
+  imageWidth: number
+  imageHeight: number
+  correctPosition: number
+  customZone?: CustomZone
   isActive: boolean
   sessionsCount?: number
   winRate?: number
@@ -14,12 +26,29 @@ export interface Game {
 
 export interface CreateGameDto {
   name: string
+  templateId: string
   imageUrl: string
-  correctPosition: 1 | 2 | 3
+  imageWidth?: number
+  imageHeight?: number
+  correctPosition: number
+  customZone?: CustomZone
   isActive: boolean
 }
 
 export interface UpdateGameDto extends Partial<CreateGameDto> {}
+
+export interface BroadcastGameDto {
+  customKeys: string[]
+  customMessage?: string
+}
+
+export interface BroadcastResult {
+  total: number
+  sent: number
+  failed: number
+  sessionsCreated: number
+  results: Array<{ customKey: string; success: boolean; error?: string }>
+}
 
 export const gamesApi = {
   getAll: async (): Promise<Game[]> => {
@@ -44,5 +73,10 @@ export const gamesApi = {
 
   delete: async (id: string): Promise<void> => {
     await apiClient.delete(`/admin/games/${id}`)
+  },
+
+  broadcast: async (id: string, data: BroadcastGameDto): Promise<BroadcastResult> => {
+    const response = await apiClient.post(`/admin/games/${id}/broadcast`, data)
+    return response.data
   },
 }

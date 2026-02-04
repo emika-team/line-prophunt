@@ -4,6 +4,7 @@ import { GameService } from './game.service';
 import { Player, PlayerSchema } from './schemas/player.schema';
 import { Game, GameSchema } from './schemas/game.schema';
 import { GameSession, GameSessionSchema } from './schemas/game-session.schema';
+import { GameTemplate, GameTemplateSchema } from './schemas/game-template.schema';
 
 @Module({
   imports: [
@@ -11,6 +12,7 @@ import { GameSession, GameSessionSchema } from './schemas/game-session.schema';
       { name: Player.name, schema: PlayerSchema },
       { name: Game.name, schema: GameSchema },
       { name: GameSession.name, schema: GameSessionSchema },
+      { name: GameTemplate.name, schema: GameTemplateSchema },
     ]),
   ],
   providers: [GameService],

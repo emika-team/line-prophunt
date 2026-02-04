@@ -1,4 +1,5 @@
 import { IsString, IsObject, ValidateNested, IsOptional, IsArray } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { Type } from 'class-transformer';
 
 class ChatDto {
@@ -6,11 +7,17 @@ class ChatDto {
   chatId: string;
 
   @IsString()
-  message: string;
+  @IsOptional()
+  message?: string;
 
   @IsArray()
   @IsOptional()
   attachments?: any[];
+}
+
+class PostbackDataDto {
+  @IsString()
+  data: string;
 }
 
 class CustomerDto {
@@ -19,6 +26,10 @@ class CustomerDto {
 
   @IsString()
   displayName: string;
+
+  @IsString()
+  @IsOptional()
+  customKey?: string;
 }
 
 class CallbackDto {
@@ -38,7 +49,13 @@ class WebhookDataDto {
 
   @ValidateNested()
   @Type(() => ChatDto)
-  chat: ChatDto;
+  @IsOptional()
+  chat?: ChatDto;
+
+  @ValidateNested()
+  @Type(() => PostbackDataDto)
+  @IsOptional()
+  postback?: PostbackDataDto;
 
   @ValidateNested()
   @Type(() => CustomerDto)
@@ -53,7 +70,29 @@ export class WebhookPayloadDto {
   @IsString()
   event: string;
 
+  @IsString()
+  @IsOptional()
+  data?: string; // For postback: "action=answer&position=1&gameId=xxx"
+
+  @IsString()
+  @IsOptional()
+  key_value?: string; // customKey
+
+  @IsString()
+  @IsOptional()
+  customer_udid?: string;
+
+  @IsString()
+  @IsOptional()
+  channel_id?: string;
+
+  @IsObject()
+  @IsOptional()
+  raw?: any;
+
+  // Legacy format support
   @ValidateNested()
   @Type(() => WebhookDataDto)
-  data: WebhookDataDto;
+  @IsOptional()
+  payload?: WebhookDataDto;
 }
