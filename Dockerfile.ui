@@ -1,0 +1,33 @@
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+COPY packages/admin-ui/package*.json ./packages/admin-ui/
+
+# Install dependencies
+RUN npm ci --workspace=packages/admin-ui
+
+# Copy source
+COPY packages/admin-ui ./packages/admin-ui
+
+# Build args for API URL
+ARG VITE_API_URL=/api
+ENV VITE_API_URL=$VITE_API_URL
+
+# Build
+RUN npm run build --workspace=packages/admin-ui
+
+# Production stage with nginx
+FROM nginx:alpine
+
+# Copy built files
+COPY --from=builder /app/packages/admin-ui/dist /usr/share/nginx/html
+
+# Copy nginx config
+COPY packages/admin-ui/nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
