@@ -8,6 +8,19 @@ export interface CustomZone {
   height: number
 }
 
+export interface WinMessageConfig {
+  reward?: string
+  message?: string
+  buttonText?: string
+  buttonUrl?: string
+}
+
+export interface LoseMessageConfig {
+  message?: string
+  buttonText?: string
+  buttonUrl?: string
+}
+
 export interface Game {
   _id: string
   name: string
@@ -17,6 +30,9 @@ export interface Game {
   imageHeight: number
   correctPosition: number
   customZone?: CustomZone
+  missionTagId?: number | null
+  winMessageConfig?: WinMessageConfig | null
+  loseMessageConfig?: LoseMessageConfig | null
   isActive: boolean
   sessionsCount?: number
   winRate?: number
@@ -32,7 +48,18 @@ export interface CreateGameDto {
   imageHeight?: number
   correctPosition: number
   customZone?: CustomZone
+  missionTagId?: number | null
+  winMessageConfig?: WinMessageConfig | null
+  loseMessageConfig?: LoseMessageConfig | null
   isActive: boolean
+}
+
+export interface MissionTag {
+  id: string
+  name: string
+  description: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface UpdateGameDto extends Partial<CreateGameDto> {}
@@ -53,6 +80,11 @@ export interface BroadcastResult {
 export const gamesApi = {
   getAll: async (): Promise<Game[]> => {
     const response = await apiClient.get('/admin/games')
+    return response.data
+  },
+
+  getMissionTags: async (): Promise<MissionTag[]> => {
+    const response = await apiClient.get('/admin/mission-tags')
     return response.data
   },
 

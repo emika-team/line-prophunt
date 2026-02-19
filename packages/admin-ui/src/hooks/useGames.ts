@@ -1,6 +1,20 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { gamesApi, type CreateGameDto, type UpdateGameDto, type BroadcastGameDto } from '@/api/games'
 
+export function useMissionTags() {
+  const query = useQuery({
+    queryKey: ['mission-tags'],
+    queryFn: gamesApi.getMissionTags,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  })
+
+  return {
+    missionTags: query.data ?? [],
+    isLoading: query.isLoading,
+    error: query.error,
+  }
+}
+
 export function useGames() {
   const queryClient = useQueryClient()
 

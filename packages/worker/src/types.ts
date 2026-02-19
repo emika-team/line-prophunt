@@ -6,6 +6,10 @@ export interface Env {
   ADMIN_USERNAME: string;
   ADMIN_PASSWORD: string;
   JWT_SECRET: string;
+  // Redemption API (optional)
+  REDEMPTION_API_URL?: string;
+  REDEMPTION_API_KEY?: string;
+  REDEMPTION_WIN_TAG_ID?: string;
 }
 
 // Database types
@@ -35,6 +39,9 @@ export interface Game {
   correct_position: number;
   custom_zone: string | null; // JSON
   win_callback_url: string | null;
+  mission_tag_id: number | null;
+  win_message_config: string | null; // JSON: { reward, message, buttonText, buttonUrl }
+  lose_message_config: string | null; // JSON: { message, buttonText, buttonUrl }
   is_active: number;
   created_at: string;
   updated_at: string;
@@ -104,4 +111,66 @@ export interface WebhookPayload {
   customer_udid?: string;
   channel_id?: string;
   raw?: unknown;
+}
+
+// ============ Broadcast System Types ============
+
+export interface Channel {
+  id: string;
+  channel_id: string;
+  channel_name: string;
+  channel_secret: string | null;
+  access_token: string | null;
+  is_active: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Group {
+  id: string;
+  name: string;
+  description: string | null;
+  channel_id: string | null;
+  is_active: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GroupMember {
+  id: string;
+  group_id: string;
+  player_id: string;
+  created_at: string;
+}
+
+export type BroadcastTargetType = 'all' | 'channel' | 'group' | 'custom';
+export type BroadcastStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+
+export interface BroadcastJob {
+  id: string;
+  game_id: string;
+  target_type: BroadcastTargetType;
+  target_id: string | null;
+  custom_keys: string | null; // JSON array
+  custom_message: string | null;
+  status: BroadcastStatus;
+  total_recipients: number;
+  processed: number;
+  sent: number;
+  failed: number;
+  error_message: string | null;
+  batch_size: number;
+  current_offset: number;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface BroadcastResult {
+  id: string;
+  job_id: string;
+  custom_key: string;
+  success: number;
+  error_message: string | null;
+  sent_at: string;
 }

@@ -28,7 +28,12 @@ webhook.post('/', async (c) => {
       }
 
       const gameService = new GameService(c.env.DB, c.env);
-      await gameService.handlePostbackAnswer(customKey, parseInt(position, 10), gameId);
+      try {
+        await gameService.handlePostbackAnswer(customKey, parseInt(position, 10), gameId);
+        console.log(`[WEBHOOK] handlePostbackAnswer completed for ${customKey}`);
+      } catch (error) {
+        console.error(`[WEBHOOK] handlePostbackAnswer error:`, error);
+      }
 
       return c.json({ status: 'ok' });
     }

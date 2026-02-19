@@ -24,20 +24,34 @@ export interface SendResult {
   };
 }
 
+export interface SendOptions {
+  groupId?: string;
+  channelId?: string;
+}
+
 export class OutboundService {
   constructor(private env: Env) {}
 
   private async send(
     customKey: string,
-    message: Record<string, unknown>
+    message: Record<string, unknown>,
+    options?: SendOptions
   ): Promise<SendResult> {
-    const payload = {
+    const payload: Record<string, unknown> = {
       key_name: 'username',
       key_value: customKey,
       platform: 'line',
       callback_url: this.env.OUTBOUND_CALLBACK_URL,
       message,
     };
+
+    // Add optional group_id or channel_id
+    if (options?.groupId) {
+      payload.group_id = options.groupId;
+    }
+    if (options?.channelId) {
+      payload.channel_id = options.channelId;
+    }
 
     try {
       const response = await fetch(`${this.env.OUTBOUND_API_URL}/outbound/send`, {
@@ -72,16 +86,51 @@ export class OutboundService {
     }
   }
 
-  async sendText(customKey: string, text: string): Promise<SendResult> {
-    return this.send(customKey, { type: 'text', text });
+  async sendText(customKey: string, text: string, options?: SendOptions): Promise<SendResult> {
+    return this.send(customKey, { type: 'text', text }, options);
   }
 
   async sendFlex(
     customKey: string,
     contents: object,
-    altText: string
+    altText: string,
+    options?: SendOptions
   ): Promise<SendResult> {
-    return this.send(customKey, { type: 'flex', altText, contents });
+    return this.send(customKey, { type: 'flex', altText, contents }, options);
+  }
+
+  async sendImage(
+    customKey: string,
+    originalContentUrl: string,
+    previewImageUrl?: string,
+    options?: SendOptions
+  ): Promise<SendResult> {
+    return this.send(
+      customKey,
+      {
+        type: 'image',
+        originalContentUrl,
+        previewImageUrl: previewImageUrl || originalContentUrl,
+      },
+      options
+    );
+  }
+
+  async sendMessages(
+    customKey: string,
+    messages: Array<Record<string, unknown>>,
+    options?: SendOptions
+  ): Promise<SendResult> {
+    // LINE allows up to 5 messages at once
+    // For now, send them one by one and return combined result
+    let lastResult: SendResult = { success: false };
+    for (const message of messages.slice(0, 5)) {
+      lastResult = await this.send(customKey, message, options);
+      if (!lastResult.success) {
+        return lastResult;
+      }
+    }
+    return lastResult;
   }
 
   // Create Game Flex with clickable overlay

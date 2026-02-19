@@ -5,6 +5,8 @@ import { verifyJWT } from './routes/auth';
 import authRoutes from './routes/auth';
 import webhookRoutes from './routes/webhook';
 import adminRoutes from './routes/admin';
+import broadcastRoutes from './routes/broadcast';
+import notifyRoutes from './routes/notify';
 
 // @ts-expect-error - __STATIC_CONTENT_MANIFEST is injected by wrangler
 import manifest from '__STATIC_CONTENT_MANIFEST';
@@ -44,7 +46,9 @@ app.use('/api/admin/*', async (c, next) => {
 // Mount routes
 app.route('/api/admin/auth', authRoutes);
 app.route('/api/admin', adminRoutes);
+app.route('/api/admin/broadcast', broadcastRoutes);
 app.route('/api/webhook', webhookRoutes);
+app.route('/api/notify', notifyRoutes);
 
 // Health check
 app.get('/api/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));

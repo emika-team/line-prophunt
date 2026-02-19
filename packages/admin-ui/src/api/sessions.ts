@@ -19,6 +19,7 @@ export interface GameSession {
 
 export interface SessionsFilter {
   winnersOnly?: boolean
+  gameId?: string
   startDate?: string
   endDate?: string
   search?: string
@@ -43,6 +44,13 @@ export const sessionsApi = {
   markPaid: async (id: string): Promise<GameSession> => {
     const response = await apiClient.put(`/admin/sessions/${id}`, {
       rewardStatus: 'paid',
+    })
+    return response.data
+  },
+
+  clear: async (gameId?: string): Promise<{ deleted: number }> => {
+    const response = await apiClient.delete('/admin/sessions', {
+      params: gameId ? { gameId } : undefined,
     })
     return response.data
   },

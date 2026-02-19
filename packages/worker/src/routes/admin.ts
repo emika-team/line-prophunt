@@ -1,12 +1,30 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { GameService } from '../services/game';
+import { RedemptionService } from '../services/redemption';
+import { OutboundService } from '../services/outbound';
+import { MessageTemplateService } from '../services/message-template';
 
 const admin = new Hono<{ Bindings: Env }>();
 
 // Helper to get GameService
 function getGameService(c: { env: Env }) {
   return new GameService(c.env.DB, c.env);
+}
+
+// Helper to get RedemptionService
+function getRedemptionService(c: { env: Env }) {
+  return new RedemptionService(c.env);
+}
+
+// Helper to get OutboundService
+function getOutboundService(c: { env: Env }) {
+  return new OutboundService(c.env);
+}
+
+// Helper to get MessageTemplateService
+function getMessageTemplateService(c: { env: Env }) {
+  return new MessageTemplateService(c.env.DB, c.env);
 }
 
 // ============ Dashboard ============
@@ -16,6 +34,24 @@ admin.get('/dashboard', async (c) => {
   const gameService = getGameService(c);
   const gameStats = await gameService.getDashboardStats(groupId);
   return c.json({ game: gameStats });
+});
+
+// ============ Mission Tags (from Redemption API) ============
+
+admin.get('/mission-tags', async (c) => {
+  const redemptionService = getRedemptionService(c);
+  
+  if (!redemptionService.isConfigured()) {
+    return c.json({ error: 'Redemption API not configured' }, 503);
+  }
+
+  const result = await redemptionService.getMissionTags();
+  
+  if (!result.success) {
+    return c.json({ error: result.error }, 500);
+  }
+
+  return c.json(result.tags);
 });
 
 // ============ Templates CRUD ============
@@ -160,6 +196,9 @@ admin.get('/games', async (c) => {
     correctPosition: g.correct_position,
     customZone: g.custom_zone ? JSON.parse(g.custom_zone) : null,
     winCallbackUrl: g.win_callback_url,
+    missionTagId: g.mission_tag_id,
+    winMessageConfig: g.win_message_config ? JSON.parse(g.win_message_config) : null,
+    loseMessageConfig: g.lose_message_config ? JSON.parse(g.lose_message_config) : null,
     isActive: g.is_active === 1,
     createdAt: g.created_at,
     updatedAt: g.updated_at,
@@ -190,6 +229,9 @@ admin.get('/games/:id', async (c) => {
     correctPosition: game.correct_position,
     customZone: game.custom_zone ? JSON.parse(game.custom_zone) : null,
     winCallbackUrl: game.win_callback_url,
+    missionTagId: game.mission_tag_id,
+    winMessageConfig: game.win_message_config ? JSON.parse(game.win_message_config) : null,
+    loseMessageConfig: game.lose_message_config ? JSON.parse(game.lose_message_config) : null,
     isActive: game.is_active === 1,
     createdAt: game.created_at,
     updatedAt: game.updated_at,
@@ -210,6 +252,9 @@ admin.post('/games', async (c) => {
       correctPosition: body.correctPosition,
       customZone: body.customZone,
       winCallbackUrl: body.winCallbackUrl,
+      missionTagId: body.missionTagId,
+      winMessageConfig: body.winMessageConfig,
+      loseMessageConfig: body.loseMessageConfig,
     });
 
     return c.json({
@@ -222,6 +267,9 @@ admin.post('/games', async (c) => {
       correctPosition: game.correct_position,
       customZone: game.custom_zone ? JSON.parse(game.custom_zone) : null,
       winCallbackUrl: game.win_callback_url,
+      missionTagId: game.mission_tag_id,
+      winMessageConfig: game.win_message_config ? JSON.parse(game.win_message_config) : null,
+      loseMessageConfig: game.lose_message_config ? JSON.parse(game.lose_message_config) : null,
       isActive: game.is_active === 1,
       createdAt: game.created_at,
       updatedAt: game.updated_at,
@@ -255,6 +303,9 @@ admin.put('/games/:id', async (c) => {
     correctPosition: game.correct_position,
     customZone: game.custom_zone ? JSON.parse(game.custom_zone) : null,
     winCallbackUrl: game.win_callback_url,
+    missionTagId: game.mission_tag_id,
+    winMessageConfig: game.win_message_config ? JSON.parse(game.win_message_config) : null,
+    loseMessageConfig: game.lose_message_config ? JSON.parse(game.lose_message_config) : null,
     isActive: game.is_active === 1,
     createdAt: game.created_at,
     updatedAt: game.updated_at,
@@ -371,6 +422,14 @@ admin.put('/sessions/:id', async (c) => {
   });
 });
 
+admin.delete('/sessions', async (c) => {
+  const gameId = c.req.query('gameId');
+  const gameService = getGameService(c);
+  
+  const result = await gameService.clearSessions(gameId || undefined);
+  return c.json(result);
+});
+
 // ============ Players ============
 
 admin.get('/players', async (c) => {
@@ -389,6 +448,230 @@ admin.get('/players', async (c) => {
     createdAt: p.created_at,
     updatedAt: p.updated_at,
   })));
+});
+
+// ============ Notifications ============
+
+admin.post('/notifications/send', async (c) => {
+  const body = await c.req.json<{
+    customKeys: string[];
+    messages: Array<Record<string, unknown>>;
+  }>();
+
+  const outbound = getOutboundService(c);
+  const results: Array<{ customKey: string; success: boolean; error?: string }> = [];
+  let sent = 0;
+  let failed = 0;
+
+  for (const customKey of body.customKeys) {
+    try {
+      const result = await outbound.sendMessages(customKey, body.messages);
+      if (result.success) {
+        sent++;
+        results.push({ customKey, success: true });
+      } else {
+        failed++;
+        results.push({ customKey, success: false, error: result.error?.message });
+      }
+    } catch (error) {
+      failed++;
+      results.push({
+        customKey,
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  return c.json({
+    total: body.customKeys.length,
+    sent,
+    failed,
+    results,
+  });
+});
+
+// ============ Message Templates ============
+
+admin.get('/message-templates', async (c) => {
+  const category = c.req.query('category');
+  const templateService = getMessageTemplateService(c);
+  const templates = await templateService.findAll(category || undefined);
+
+  return c.json(templates.map(t => ({
+    _id: t.id,
+    name: t.name,
+    description: t.description,
+    category: t.category,
+    type: t.type,
+    content: JSON.parse(t.content),
+    variables: t.variables ? JSON.parse(t.variables) : [],
+    isActive: t.is_active === 1,
+    createdAt: t.created_at,
+    updatedAt: t.updated_at,
+  })));
+});
+
+admin.get('/message-templates/:id', async (c) => {
+  const templateService = getMessageTemplateService(c);
+  const template = await templateService.findById(c.req.param('id'));
+
+  if (!template) {
+    return c.json({ error: 'Template not found' }, 404);
+  }
+
+  return c.json({
+    _id: template.id,
+    name: template.name,
+    description: template.description,
+    category: template.category,
+    type: template.type,
+    content: JSON.parse(template.content),
+    variables: template.variables ? JSON.parse(template.variables) : [],
+    isActive: template.is_active === 1,
+    createdAt: template.created_at,
+    updatedAt: template.updated_at,
+  });
+});
+
+admin.post('/message-templates', async (c) => {
+  const body = await c.req.json();
+  const templateService = getMessageTemplateService(c);
+
+  const template = await templateService.create({
+    name: body.name,
+    description: body.description,
+    category: body.category,
+    type: body.type,
+    content: body.content,
+    variables: body.variables,
+  });
+
+  return c.json({
+    _id: template.id,
+    name: template.name,
+    description: template.description,
+    category: template.category,
+    type: template.type,
+    content: JSON.parse(template.content),
+    variables: template.variables ? JSON.parse(template.variables) : [],
+    isActive: template.is_active === 1,
+    createdAt: template.created_at,
+    updatedAt: template.updated_at,
+  }, 201);
+});
+
+admin.put('/message-templates/:id', async (c) => {
+  const body = await c.req.json();
+  const templateService = getMessageTemplateService(c);
+
+  const template = await templateService.update(c.req.param('id'), body);
+
+  if (!template) {
+    return c.json({ error: 'Template not found' }, 404);
+  }
+
+  return c.json({
+    _id: template.id,
+    name: template.name,
+    description: template.description,
+    category: template.category,
+    type: template.type,
+    content: JSON.parse(template.content),
+    variables: template.variables ? JSON.parse(template.variables) : [],
+    isActive: template.is_active === 1,
+    createdAt: template.created_at,
+    updatedAt: template.updated_at,
+  });
+});
+
+admin.delete('/message-templates/:id', async (c) => {
+  const templateService = getMessageTemplateService(c);
+  const deleted = await templateService.delete(c.req.param('id'));
+
+  if (!deleted) {
+    return c.json({ error: 'Template not found' }, 404);
+  }
+
+  return c.body(null, 204);
+});
+
+// Seed default templates
+admin.post('/message-templates/seed', async (c) => {
+  const templateService = getMessageTemplateService(c);
+  const result = await templateService.seedDefaults();
+  return c.json(result);
+});
+
+// Render template with variables
+admin.post('/message-templates/:id/render', async (c) => {
+  const body = await c.req.json<{ variables: Record<string, string> }>();
+  const templateService = getMessageTemplateService(c);
+  const template = await templateService.findById(c.req.param('id'));
+
+  if (!template) {
+    return c.json({ error: 'Template not found' }, 404);
+  }
+
+  const rendered = templateService.renderTemplate(template, body.variables || {});
+  return c.json({ content: rendered });
+});
+
+// Send notification using template
+admin.post('/message-templates/:id/send', async (c) => {
+  const body = await c.req.json<{
+    customKeys: string[];
+    variables: Record<string, string>;
+    altText?: string;
+  }>();
+
+  const templateService = getMessageTemplateService(c);
+  const outbound = getOutboundService(c);
+
+  const template = await templateService.findById(c.req.param('id'));
+  if (!template) {
+    return c.json({ error: 'Template not found' }, 404);
+  }
+
+  const results: Array<{ customKey: string; success: boolean; error?: string }> = [];
+  let sent = 0;
+  let failed = 0;
+
+  for (const customKey of body.customKeys) {
+    try {
+      // Replace {{username}} with actual customKey if not provided
+      const variables = { username: customKey, ...body.variables };
+      const renderedContent = templateService.renderTemplate(template, variables);
+
+      const result = await outbound.sendFlex(
+        customKey,
+        renderedContent,
+        body.altText || template.name
+      );
+
+      if (result.success) {
+        sent++;
+        results.push({ customKey, success: true });
+      } else {
+        failed++;
+        results.push({ customKey, success: false, error: result.error?.message });
+      }
+    } catch (error) {
+      failed++;
+      results.push({
+        customKey,
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  return c.json({
+    total: body.customKeys.length,
+    sent,
+    failed,
+    results,
+  });
 });
 
 export default admin;

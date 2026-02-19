@@ -1,5 +1,20 @@
 import type { Env, Game, GameTemplate, Player, GameSession, ClickableArea } from '../types';
 import { OutboundService } from './outbound';
+import { RedemptionService } from './redemption';
+import { MessageTemplateService } from './message-template';
+
+export interface WinMessageConfig {
+  reward?: string;
+  message?: string;
+  buttonText?: string;
+  buttonUrl?: string;
+}
+
+export interface LoseMessageConfig {
+  message?: string;
+  buttonText?: string;
+  buttonUrl?: string;
+}
 
 function generateId(): string {
   return crypto.randomUUID();
@@ -7,9 +22,11 @@ function generateId(): string {
 
 export class GameService {
   private outbound: OutboundService;
+  private redemption: RedemptionService;
 
   constructor(private db: D1Database, private env: Env) {
     this.outbound = new OutboundService(env);
+    this.redemption = new RedemptionService(env);
   }
 
   // ============ Postback Handler ============
@@ -96,12 +113,14 @@ export class GameService {
 
     // Check if already answered
     if (session.answer !== null) {
-      await this.outbound.sendText(customKey, 'คุณได้ตอบเกมนี้แล้ว ขอบคุณที่ร่วมสนุก!');
+      await this.outbound.sendText(customKey, 'คุณตอบแล้ว');
       return;
     }
 
     const isCorrect = position === game.correct_position;
     const answeredAt = new Date().toISOString();
+    
+    console.log(`[DEBUG] position=${position}, correct=${game.correct_position}, isCorrect=${isCorrect}`);
 
     // Update session
     await this.db
@@ -132,17 +151,52 @@ export class GameService {
       });
     }
 
-    // Send result
-    const resultFlex = this.outbound.createGameResultFlex(
-      isCorrect,
-      isCorrect ? 'ตอบถูกแล้ว! รอ admin แจ้งรางวัลนะ' : 'ตอบผิด ลองเกมหน้านะ!'
-    );
+    // Link winner to Redemption mission tag (use game-specific tag if set)
+    if (isCorrect && this.redemption.isConfigured() && game.mission_tag_id) {
+      await this.redemption.linkUserToTag(customKey, game.mission_tag_id);
+    }
 
-    await this.outbound.sendFlex(
-      customKey,
-      resultFlex,
-      isCorrect ? 'ยินดีด้วย! ตอบถูก!' : 'เสียใจด้วย ตอบผิด'
-    );
+    // Send result message (always Flex, use config if set or defaults)
+    const messageTemplateService = new MessageTemplateService(this.db, this.env);
+    const templates = await messageTemplateService.findAll('reward');
+    
+    if (isCorrect) {
+      // Send win flex message
+      const winConfig: WinMessageConfig = game.win_message_config 
+        ? JSON.parse(game.win_message_config) 
+        : {};
+      const template = templates.find(t => t.name === 'แจ้งรางวัล - ชนะ');
+      
+      if (template) {
+        const variables = {
+          username: customKey,
+          reward: winConfig.reward || 'รางวัล',
+          message: winConfig.message || 'ยินดีด้วย!',
+          buttonText: winConfig.buttonText || '',
+          buttonUrl: winConfig.buttonUrl || '',
+        };
+        const content = messageTemplateService.renderTemplate(template, variables);
+        await this.outbound.sendFlex(customKey, content, 'ยินดีด้วย! คุณได้รับรางวัล');
+        console.log(`[DEBUG] Sent win flex to ${customKey}`);
+      }
+    } else {
+      // Send lose flex message
+      const loseConfig: LoseMessageConfig = game.lose_message_config 
+        ? JSON.parse(game.lose_message_config) 
+        : {};
+      const template = templates.find(t => t.name === 'แจ้งรางวัล - ไม่ชนะ');
+      
+      if (template) {
+        const variables = {
+          message: loseConfig.message || 'ขอบคุณที่ร่วมกิจกรรม',
+          buttonText: loseConfig.buttonText || '',
+          buttonUrl: loseConfig.buttonUrl || '',
+        };
+        const content = messageTemplateService.renderTemplate(template, variables);
+        await this.outbound.sendFlex(customKey, content, 'เสียใจด้วย');
+        console.log(`[DEBUG] Sent lose flex to ${customKey}`);
+      }
+    }
   }
 
   // ============ Template CRUD ============
@@ -267,6 +321,9 @@ export class GameService {
         correct_position: row.correct_position,
         custom_zone: row.custom_zone,
         win_callback_url: row.win_callback_url,
+        mission_tag_id: row.mission_tag_id as number | null,
+        win_message_config: row.win_message_config as string | null,
+        lose_message_config: row.lose_message_config as string | null,
         is_active: row.is_active,
         created_at: row.created_at,
         updated_at: row.updated_at,
@@ -321,6 +378,9 @@ export class GameService {
       correct_position: row.correct_position,
       custom_zone: row.custom_zone,
       win_callback_url: row.win_callback_url,
+      mission_tag_id: row.mission_tag_id as number | null,
+      win_message_config: row.win_message_config as string | null,
+      lose_message_config: row.lose_message_config as string | null,
       is_active: row.is_active,
       created_at: row.created_at,
       updated_at: row.updated_at,
@@ -356,6 +416,9 @@ export class GameService {
     correctPosition: number;
     customZone?: object;
     winCallbackUrl?: string;
+    missionTagId?: number;
+    winMessageConfig?: WinMessageConfig;
+    loseMessageConfig?: LoseMessageConfig;
   }): Promise<Game> {
     // Validate template
     const template = await this.findTemplateById(data.templateId);
@@ -373,8 +436,8 @@ export class GameService {
     await this.db
       .prepare(
         `INSERT INTO games 
-         (id, name, template_id, image_url, image_width, image_height, correct_position, custom_zone, win_callback_url, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         (id, name, template_id, image_url, image_width, image_height, correct_position, custom_zone, win_callback_url, mission_tag_id, win_message_config, lose_message_config, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .bind(
         id,
@@ -386,6 +449,9 @@ export class GameService {
         data.correctPosition,
         data.customZone ? JSON.stringify(data.customZone) : null,
         data.winCallbackUrl || null,
+        data.missionTagId || null,
+        data.winMessageConfig ? JSON.stringify(data.winMessageConfig) : null,
+        data.loseMessageConfig ? JSON.stringify(data.loseMessageConfig) : null,
         now,
         now
       )
@@ -403,6 +469,9 @@ export class GameService {
     correctPosition: number;
     customZone: object;
     winCallbackUrl: string;
+    missionTagId: number | null;
+    winMessageConfig: WinMessageConfig | null;
+    loseMessageConfig: LoseMessageConfig | null;
     isActive: boolean;
   }>): Promise<Game | null> {
     const existing = await this.findGameById(id);
@@ -419,6 +488,9 @@ export class GameService {
     if (data.correctPosition !== undefined) { updates.push('correct_position = ?'); values.push(data.correctPosition); }
     if (data.customZone !== undefined) { updates.push('custom_zone = ?'); values.push(JSON.stringify(data.customZone)); }
     if (data.winCallbackUrl !== undefined) { updates.push('win_callback_url = ?'); values.push(data.winCallbackUrl); }
+    if (data.missionTagId !== undefined) { updates.push('mission_tag_id = ?'); values.push(data.missionTagId); }
+    if (data.winMessageConfig !== undefined) { updates.push('win_message_config = ?'); values.push(data.winMessageConfig ? JSON.stringify(data.winMessageConfig) : null); }
+    if (data.loseMessageConfig !== undefined) { updates.push('lose_message_config = ?'); values.push(data.loseMessageConfig ? JSON.stringify(data.loseMessageConfig) : null); }
     if (data.isActive !== undefined) { updates.push('is_active = ?'); values.push(data.isActive ? 1 : 0); }
 
     updates.push("updated_at = datetime('now')");
@@ -506,6 +578,9 @@ export class GameService {
         correct_position: 0,
         custom_zone: null,
         win_callback_url: null,
+        mission_tag_id: null,
+        win_message_config: null,
+        lose_message_config: null,
         is_active: 1,
         created_at: '',
         updated_at: '',
@@ -520,6 +595,19 @@ export class GameService {
       .run();
 
     return this.db.prepare('SELECT * FROM game_sessions WHERE id = ?').bind(id).first<GameSession>();
+  }
+
+  async clearSessions(gameId?: string): Promise<{ deleted: number }> {
+    let result;
+    if (gameId) {
+      result = await this.db
+        .prepare('DELETE FROM game_sessions WHERE game_id = ?')
+        .bind(gameId)
+        .run();
+    } else {
+      result = await this.db.prepare('DELETE FROM game_sessions').run();
+    }
+    return { deleted: result.meta.changes };
   }
 
   async getDashboardStats(groupId?: string): Promise<{

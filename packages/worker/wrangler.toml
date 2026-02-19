@@ -1,11 +1,11 @@
-name = "line-prophunt"
+name = "rich-worker"
 main = "src/index.ts"
 compatibility_date = "2024-12-01"
 account_id = "66c85167a426f45ad595093b815f2fa3"
 
 [vars]
 OUTBOUND_API_URL = "http://chatapi.dmkbet.in"
-OUTBOUND_CALLBACK_URL = "https://line-prophunt.feadtodark.workers.dev/api/webhook"
+OUTBOUND_CALLBACK_URL = "https://rich-worker.feadtodark.workers.dev/api/webhook"
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "admin123"
 JWT_SECRET = "your-secret-key-change-in-production"

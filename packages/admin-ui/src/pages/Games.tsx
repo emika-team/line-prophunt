@@ -1,13 +1,14 @@
 import { useState } from 'react'
-import { useGames } from '@/hooks/useGames'
+import { useGames, useMissionTags } from '@/hooks/useGames'
 import { useTemplates } from '@/hooks/useTemplates'
+import { useChannels, useGroups, useQuickBroadcast } from '@/hooks/useBroadcast'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Plus, Pencil, Trash2, X, Send } from 'lucide-react'
-import type { Game, CreateGameDto, BroadcastResult, CustomZone } from '@/api/games'
+import { Plus, Pencil, Trash2, X, Send, Users, Radio } from 'lucide-react'
+import type { Game, CreateGameDto, CustomZone, WinMessageConfig, LoseMessageConfig } from '@/api/games'
 import type { GameTemplate } from '@/api/templates'
 
 function TemplateCard({
@@ -271,6 +272,7 @@ function GameForm({
   isLoading: boolean
 }) {
   const { templates, isLoading: templatesLoading } = useTemplates()
+  const { missionTags, isLoading: tagsLoading } = useMissionTags()
 
   const existingTemplate = game?.templateId
     ? typeof game.templateId === 'object'
@@ -283,7 +285,17 @@ function GameForm({
   const [imageUrl, setImageUrl] = useState(game?.imageUrl ?? '')
   const [correctPosition, setCorrectPosition] = useState(game?.correctPosition ?? 1)
   const [customZone, setCustomZone] = useState<CustomZone | undefined>(game?.customZone)
+  const [missionTagId, setMissionTagId] = useState<number | null>(game?.missionTagId ?? null)
   const [isActive, setIsActive] = useState(game?.isActive ?? true)
+  
+  // Win/Lose message configs
+  const [winReward, setWinReward] = useState(game?.winMessageConfig?.reward ?? '')
+  const [winMessage, setWinMessage] = useState(game?.winMessageConfig?.message ?? '')
+  const [winButtonText, setWinButtonText] = useState(game?.winMessageConfig?.buttonText ?? '')
+  const [winButtonUrl, setWinButtonUrl] = useState(game?.winMessageConfig?.buttonUrl ?? '')
+  const [loseMessage, setLoseMessage] = useState(game?.loseMessageConfig?.message ?? '')
+  const [loseButtonText, setLoseButtonText] = useState(game?.loseMessageConfig?.buttonText ?? '')
+  const [loseButtonUrl, setLoseButtonUrl] = useState(game?.loseMessageConfig?.buttonUrl ?? '')
 
   const selectedTemplate = templates.find((t) => t._id === templateId)
 
@@ -293,21 +305,36 @@ function GameForm({
       alert('Please select a template')
       return
     }
+    
+    // Build win/lose configs (only if any field is filled)
+    const winMessageConfig: WinMessageConfig | null = 
+      winReward || winMessage || winButtonText || winButtonUrl
+        ? { reward: winReward || undefined, message: winMessage || undefined, buttonText: winButtonText || undefined, buttonUrl: winButtonUrl || undefined }
+        : null
+    
+    const loseMessageConfig: LoseMessageConfig | null =
+      loseMessage || loseButtonText || loseButtonUrl
+        ? { message: loseMessage || undefined, buttonText: loseButtonText || undefined, buttonUrl: loseButtonUrl || undefined }
+        : null
+    
     onSubmit({
       name,
       templateId,
       imageUrl,
       correctPosition,
       customZone: selectedTemplate?.type === 'tap_zone' ? customZone : undefined,
+      missionTagId,
+      winMessageConfig,
+      loseMessageConfig,
       isActive,
     })
   }
 
-  if (templatesLoading) {
+  if (templatesLoading || tagsLoading) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
         <Card className="w-full max-w-lg p-6">
-          <p className="text-center text-muted-foreground">Loading templates...</p>
+          <p className="text-center text-muted-foreground">Loading...</p>
         </Card>
       </div>
     )
@@ -401,6 +428,104 @@ function GameForm({
                   />
                 </div>
 
+                {/* Step 4: Mission Tag (Win Reward) */}
+                <div className="space-y-3">
+                  <Label className="text-base font-semibold">4. Win Reward (Mission Tag)</Label>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={missionTagId ?? ''}
+                    onChange={(e) => setMissionTagId(e.target.value ? parseInt(e.target.value) : null)}
+                  >
+                    <option value="">-- No reward tag --</option>
+                    {missionTags
+                      .filter((tag) => !tag.name.startsWith('routine_'))
+                      .map((tag) => (
+                        <option key={tag.id} value={tag.id}>
+                          {tag.name}
+                        </option>
+                      ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    ผู้เล่นที่ชนะเกมนี้จะได้รับ tag นี้โดยอัตโนมัติ
+                  </p>
+                </div>
+
+                {/* Step 5: Win Message Config */}
+                <div className="space-y-3">
+                  <Label className="text-base font-semibold">5. ข้อความแจ้งชนะ (Flex Message)</Label>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="space-y-1">
+                      <Label className="text-sm">รางวัล</Label>
+                      <Input
+                        value={winReward}
+                        onChange={(e) => setWinReward(e.target.value)}
+                        placeholder="เช่น 100 บาท"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-sm">ข้อความ</Label>
+                      <Input
+                        value={winMessage}
+                        onChange={(e) => setWinMessage(e.target.value)}
+                        placeholder="เช่น ยินดีด้วย!"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-sm">ข้อความปุ่ม</Label>
+                      <Input
+                        value={winButtonText}
+                        onChange={(e) => setWinButtonText(e.target.value)}
+                        placeholder="เช่น รับรางวัล"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-sm">URL ปุ่ม</Label>
+                      <Input
+                        value={winButtonUrl}
+                        onChange={(e) => setWinButtonUrl(e.target.value)}
+                        placeholder="https://..."
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    ถ้าไม่กรอก จะใช้ข้อความ text ธรรมดา
+                  </p>
+                </div>
+
+                {/* Step 6: Lose Message Config */}
+                <div className="space-y-3">
+                  <Label className="text-base font-semibold">6. ข้อความแจ้งแพ้ (Flex Message)</Label>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="space-y-1 md:col-span-2">
+                      <Label className="text-sm">ข้อความ</Label>
+                      <Input
+                        value={loseMessage}
+                        onChange={(e) => setLoseMessage(e.target.value)}
+                        placeholder="เช่น ขอบคุณที่ร่วมกิจกรรม"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-sm">ข้อความปุ่ม</Label>
+                      <Input
+                        value={loseButtonText}
+                        onChange={(e) => setLoseButtonText(e.target.value)}
+                        placeholder="เช่น ลองอีกครั้ง"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-sm">URL ปุ่ม</Label>
+                      <Input
+                        value={loseButtonUrl}
+                        onChange={(e) => setLoseButtonUrl(e.target.value)}
+                        placeholder="https://..."
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    ถ้าไม่กรอก จะใช้ข้อความ text ธรรมดา
+                  </p>
+                </div>
+
                 {/* Active Toggle */}
                 <div className="flex items-center gap-2">
                   <input
@@ -429,35 +554,85 @@ function GameForm({
   )
 }
 
+// Mode: channel_id, group_id, or platform
+type SendMode = 'channel' | 'group' | 'platform'
+
+interface BroadcastResultData {
+  total: number
+  sent: number
+  failed: number
+  jobId?: string
+}
+
 function BroadcastModal({
   game,
   onClose,
-  onBroadcast,
-  isLoading,
 }: {
   game: Game
   onClose: () => void
-  onBroadcast: (customKeys: string[], customMessage?: string) => Promise<BroadcastResult>
-  isLoading: boolean
 }) {
+  const { channels, isLoading: loadingChannels } = useChannels()
+  const { groups, isLoading: loadingGroups } = useGroups()
+  const { broadcast, isBroadcasting } = useQuickBroadcast()
+
+  const [sendMode, setSendMode] = useState<SendMode>('platform')
+  const [selectedChannelId, setSelectedChannelId] = useState('')
+  const [selectedGroupId, setSelectedGroupId] = useState('')
   const [customKeysText, setCustomKeysText] = useState('')
   const [customMessage, setCustomMessage] = useState('')
-  const [result, setResult] = useState<BroadcastResult | null>(null)
+  const [result, setResult] = useState<BroadcastResultData | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const customKeys = customKeysText
-      .split(/[\n,]/)
-      .map((k) => k.trim())
-      .filter((k) => k.length > 0)
+    setError(null)
 
+    // Custom keys are always required
+    const customKeys = customKeysText.split(/[\n,]/).map((k) => k.trim()).filter((k) => k.length > 0)
     if (customKeys.length === 0) {
-      alert('Please enter at least one custom key')
+      setError('Please enter at least one custom key')
       return
     }
 
-    const res = await onBroadcast(customKeys, customMessage || undefined)
-    setResult(res)
+    // Validate based on send mode
+    if (sendMode === 'channel' && !selectedChannelId) {
+      setError('Please select a channel')
+      return
+    }
+    if (sendMode === 'group' && !selectedGroupId) {
+      setError('Please select a group')
+      return
+    }
+
+    try {
+      const res = await broadcast({
+        gameId: game._id,
+        targetType: 'custom',
+        customKeys,
+        customMessage: customMessage || undefined,
+        // Pass channel_id or group_id based on mode
+        ...(sendMode === 'channel' && selectedChannelId ? { channelId: selectedChannelId } : {}),
+        ...(sendMode === 'group' && selectedGroupId ? { groupId: selectedGroupId } : {}),
+      })
+      setResult(res)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Broadcast failed')
+    }
+  }
+
+  const getTargetInfo = () => {
+    const keys = customKeysText.split(/[\n,]/).map((k) => k.trim()).filter((k) => k.length > 0)
+    const keyCount = `${keys.length} recipients`
+    
+    if (sendMode === 'channel') {
+      const ch = channels.find((c) => c._id === selectedChannelId)
+      return ch ? `${keyCount} via Channel: ${ch.channelName}` : `${keyCount} - Select a channel`
+    }
+    if (sendMode === 'group') {
+      const g = groups.find((gr) => gr._id === selectedGroupId)
+      return g ? `${keyCount} via Group: ${g.name}` : `${keyCount} - Select a group`
+    }
+    return `${keyCount} via Platform: LINE`
   }
 
   return (
@@ -472,14 +647,10 @@ function BroadcastModal({
         {result ? (
           <CardContent className="space-y-4">
             <div className="rounded-lg bg-muted p-4">
-              <div className="grid grid-cols-2 gap-4 text-center">
+              <div className="grid grid-cols-3 gap-4 text-center">
                 <div>
                   <p className="text-2xl font-bold">{result.total}</p>
                   <p className="text-sm text-muted-foreground">Total</p>
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-blue-600">{result.sessionsCreated}</p>
-                  <p className="text-sm text-muted-foreground">Sessions Created</p>
                 </div>
                 <div>
                   <p className="text-2xl font-bold text-green-600">{result.sent}</p>
@@ -491,20 +662,6 @@ function BroadcastModal({
                 </div>
               </div>
             </div>
-            {result.failed > 0 && (
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Failed:</p>
-                <div className="max-h-40 overflow-y-auto rounded border p-2 text-sm">
-                  {result.results
-                    .filter((r) => !r.success)
-                    .map((r, i) => (
-                      <div key={i} className="text-red-600">
-                        {r.customKey}: {r.error}
-                      </div>
-                    ))}
-                </div>
-              </div>
-            )}
             <Button className="w-full" onClick={onClose}>
               Close
             </Button>
@@ -512,16 +669,97 @@ function BroadcastModal({
         ) : (
           <form onSubmit={handleSubmit}>
             <CardContent className="space-y-4">
+              {/* Custom Keys Input - Always Required */}
               <div className="space-y-2">
-                <Label>Custom Keys (one per line or comma-separated)</Label>
+                <Label className="text-base font-semibold">Custom Keys *</Label>
                 <textarea
-                  className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   value={customKeysText}
                   onChange={(e) => setCustomKeysText(e.target.value)}
                   placeholder="member001&#10;member002&#10;member003"
                   required
                 />
+                <p className="text-xs text-muted-foreground">One per line or comma-separated</p>
               </div>
+
+              {/* Send Mode Selection */}
+              <div className="space-y-2">
+                <Label className="text-base font-semibold">Send Mode</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { value: 'platform', label: 'Platform', icon: Send, desc: 'LINE' },
+                    { value: 'channel', label: 'Channel', icon: Radio, desc: 'เลือก channel' },
+                    { value: 'group', label: 'Group', icon: Users, desc: 'เลือก group' },
+                  ].map(({ value, label, icon: Icon, desc }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setSendMode(value as SendMode)}
+                      className={`flex flex-col items-center gap-1 rounded-lg border-2 p-3 text-center transition-colors ${
+                        sendMode === value
+                          ? 'border-primary bg-primary/10'
+                          : 'border-border hover:border-primary/50'
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+                      <span className="text-sm font-medium">{label}</span>
+                      <span className="text-xs text-muted-foreground">{desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Channel Selection */}
+              {sendMode === 'channel' && (
+                <div className="space-y-2">
+                  <Label>Select Channel</Label>
+                  {loadingChannels ? (
+                    <p className="text-sm text-muted-foreground">Loading channels...</p>
+                  ) : channels.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No channels found</p>
+                  ) : (
+                    <select
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      value={selectedChannelId}
+                      onChange={(e) => setSelectedChannelId(e.target.value)}
+                    >
+                      <option value="">-- Select Channel --</option>
+                      {channels.map((ch) => (
+                        <option key={ch._id} value={ch._id}>
+                          {ch.channelName} ({ch.playerCount} players)
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
+
+              {/* Group Selection */}
+              {sendMode === 'group' && (
+                <div className="space-y-2">
+                  <Label>Select Group</Label>
+                  {loadingGroups ? (
+                    <p className="text-sm text-muted-foreground">Loading groups...</p>
+                  ) : groups.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No groups found</p>
+                  ) : (
+                    <select
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      value={selectedGroupId}
+                      onChange={(e) => setSelectedGroupId(e.target.value)}
+                    >
+                      <option value="">-- Select Group --</option>
+                      {groups.map((g) => (
+                        <option key={g._id} value={g._id}>
+                          {g.name} ({g.memberCount} members)
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
+
+              {/* Custom Message */}
               <div className="space-y-2">
                 <Label>Custom Message (optional)</Label>
                 <Input
@@ -530,13 +768,25 @@ function BroadcastModal({
                   placeholder={`Default: เกม ${game.name}`}
                 />
               </div>
+
+              {/* Target Info */}
+              <div className="rounded-lg bg-muted p-3">
+                <p className="text-sm text-muted-foreground">{getTargetInfo()}</p>
+              </div>
+
+              {/* Error Message */}
+              {error && (
+                <div className="rounded-lg bg-red-50 border border-red-200 p-3">
+                  <p className="text-sm text-red-800">{error}</p>
+                </div>
+              )}
             </CardContent>
             <CardFooter className="gap-2">
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={isLoading}>
-                {isLoading ? 'Sending...' : 'Send'}
+              <Button type="submit" disabled={isBroadcasting}>
+                {isBroadcasting ? 'Sending...' : 'Send Broadcast'}
               </Button>
             </CardFooter>
           </form>
@@ -547,7 +797,7 @@ function BroadcastModal({
 }
 
 export function Games() {
-  const { games, isLoading, createGame, updateGame, deleteGame, broadcastGame, isCreating, isUpdating, isBroadcasting } =
+  const { games, isLoading, createGame, updateGame, deleteGame, isCreating, isUpdating } =
     useGames()
   const [showForm, setShowForm] = useState(false)
   const [editingGame, setEditingGame] = useState<Game | null>(null)
@@ -639,10 +889,6 @@ export function Games() {
         <BroadcastModal
           game={broadcastingGame}
           onClose={() => setBroadcastingGame(null)}
-          onBroadcast={async (customKeys, customMessage) => {
-            return await broadcastGame({ id: broadcastingGame._id, data: { customKeys, customMessage } })
-          }}
-          isLoading={isBroadcasting}
         />
       )}
     </div>
