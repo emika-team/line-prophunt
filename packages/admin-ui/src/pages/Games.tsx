@@ -7,9 +7,33 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Plus, Pencil, Trash2, X, Send, Users, Radio } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, Send, Users, Radio, Clock, CalendarClock } from 'lucide-react'
 import type { Game, CreateGameDto, CustomZone, WinMessageConfig, LoseMessageConfig } from '@/api/games'
 import type { GameTemplate } from '@/api/templates'
+
+// Helper to get game schedule status
+function getGameScheduleStatus(game: Game): { status: 'scheduled' | 'active' | 'expired' | 'always'; label: string } {
+  const now = new Date()
+  if (game.startAt && new Date(game.startAt) > now) {
+    return { status: 'scheduled', label: 'รอเปิด' }
+  }
+  if (game.endAt && new Date(game.endAt) < now) {
+    return { status: 'expired', label: 'หมดเวลา' }
+  }
+  if (game.startAt || game.endAt) {
+    return { status: 'active', label: 'กำลังเปิด' }
+  }
+  return { status: 'always', label: '' }
+}
+
+// Format datetime for display
+function formatScheduleDate(isoDate: string | null | undefined): string {
+  if (!isoDate) return '-'
+  return new Date(isoDate).toLocaleString('th-TH', { 
+    dateStyle: 'short', 
+    timeStyle: 'short' 
+  })
+}
 
 function TemplateCard({
   template,
@@ -236,6 +260,33 @@ function GameCard({
           <p>Correct: Position {game.correctPosition}</p>
           <p>Sessions: {game.sessionsCount ?? 0}</p>
           <p>Win rate: {game.winRate ? `${game.winRate}%` : '-'}</p>
+          {(game.startAt || game.endAt) && (
+            <div className="mt-2 pt-2 border-t border-border">
+              <div className="flex items-center gap-1 text-xs">
+                <CalendarClock className="h-3 w-3" />
+                <span className="font-medium">ตารางเวลา:</span>
+              </div>
+              {game.startAt && (
+                <p className="text-xs">เริ่ม: {formatScheduleDate(game.startAt)}</p>
+              )}
+              {game.endAt && (
+                <p className="text-xs">สิ้นสุด: {formatScheduleDate(game.endAt)}</p>
+              )}
+              {(() => {
+                const scheduleStatus = getGameScheduleStatus(game)
+                if (scheduleStatus.status === 'scheduled') {
+                  return <Badge variant="outline" className="mt-1 text-xs"><Clock className="h-3 w-3 mr-1" />{scheduleStatus.label}</Badge>
+                }
+                if (scheduleStatus.status === 'expired') {
+                  return <Badge variant="destructive" className="mt-1 text-xs">{scheduleStatus.label}</Badge>
+                }
+                if (scheduleStatus.status === 'active') {
+                  return <Badge variant="success" className="mt-1 text-xs">{scheduleStatus.label}</Badge>
+                }
+                return null
+              })()}
+            </div>
+          )}
         </div>
       </CardContent>
       <CardFooter className="gap-2 p-4 pt-0 flex-wrap">
@@ -296,6 +347,10 @@ function GameForm({
   const [loseMessage, setLoseMessage] = useState(game?.loseMessageConfig?.message ?? '')
   const [loseButtonText, setLoseButtonText] = useState(game?.loseMessageConfig?.buttonText ?? '')
   const [loseButtonUrl, setLoseButtonUrl] = useState(game?.loseMessageConfig?.buttonUrl ?? '')
+  
+  // Schedule
+  const [startAt, setStartAt] = useState(game?.startAt ?? '')
+  const [endAt, setEndAt] = useState(game?.endAt ?? '')
 
   const selectedTemplate = templates.find((t) => t._id === templateId)
 
@@ -326,6 +381,8 @@ function GameForm({
       missionTagId,
       winMessageConfig,
       loseMessageConfig,
+      startAt: startAt || null,
+      endAt: endAt || null,
       isActive,
     })
   }
@@ -523,6 +580,32 @@ function GameForm({
                   </div>
                   <p className="text-xs text-muted-foreground">
                     ถ้าไม่กรอก จะใช้ข้อความ text ธรรมดา
+                  </p>
+                </div>
+
+                {/* Step 7: Schedule */}
+                <div className="space-y-3">
+                  <Label className="text-base font-semibold">7. ตั้งเวลาเกม (ไม่บังคับ)</Label>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="space-y-1">
+                      <Label className="text-sm">เริ่มเล่นได้ตั้งแต่</Label>
+                      <Input
+                        type="datetime-local"
+                        value={startAt ? startAt.slice(0, 16) : ''}
+                        onChange={(e) => setStartAt(e.target.value ? new Date(e.target.value).toISOString() : '')}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-sm">หมดเวลาเล่น</Label>
+                      <Input
+                        type="datetime-local"
+                        value={endAt ? endAt.slice(0, 16) : ''}
+                        onChange={(e) => setEndAt(e.target.value ? new Date(e.target.value).toISOString() : '')}
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    ถ้าไม่กำหนด เกมจะเล่นได้ตลอดเวลา
                   </p>
                 </div>
 

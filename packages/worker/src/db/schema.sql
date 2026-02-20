@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS games (
   correct_position INTEGER NOT NULL,
   custom_zone TEXT,
   win_callback_url TEXT,
+  start_at TEXT,
+  end_at TEXT,
   is_active INTEGER DEFAULT 1,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
