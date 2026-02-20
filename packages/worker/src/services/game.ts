@@ -113,7 +113,28 @@ export class GameService {
 
     // Check if already answered
     if (session.answer !== null) {
-      await this.outbound.sendText(customKey, 'คุณตอบแล้ว');
+      // Silent - no response when already answered
+      return;
+    }
+
+    // Check if game is within schedule (after session check to allow silent ignore)
+    const now = new Date();
+    if (game.start_at && new Date(game.start_at) > now) {
+      await this.outbound.sendText(customKey, 'เกมยังไม่เริ่ม');
+      return;
+    }
+    if (game.end_at && new Date(game.end_at) < now) {
+      // Game expired - mark session as answered (expired) so future clicks are silent
+      await this.db
+        .prepare(
+          `UPDATE game_sessions 
+           SET answer = -1, is_correct = 0, answered_at = ?, updated_at = datetime('now')
+           WHERE id = ?`
+        )
+        .bind(now.toISOString(), session.id)
+        .run();
+      
+      await this.outbound.sendText(customKey, 'เกมหมดเวลาแล้ว');
       return;
     }
 
@@ -324,6 +345,8 @@ export class GameService {
         mission_tag_id: row.mission_tag_id as number | null,
         win_message_config: row.win_message_config as string | null,
         lose_message_config: row.lose_message_config as string | null,
+        start_at: row.start_at as string | null,
+        end_at: row.end_at as string | null,
         is_active: row.is_active,
         created_at: row.created_at,
         updated_at: row.updated_at,
@@ -381,6 +404,8 @@ export class GameService {
       mission_tag_id: row.mission_tag_id as number | null,
       win_message_config: row.win_message_config as string | null,
       lose_message_config: row.lose_message_config as string | null,
+      start_at: row.start_at as string | null,
+      end_at: row.end_at as string | null,
       is_active: row.is_active,
       created_at: row.created_at,
       updated_at: row.updated_at,
@@ -419,6 +444,8 @@ export class GameService {
     missionTagId?: number;
     winMessageConfig?: WinMessageConfig;
     loseMessageConfig?: LoseMessageConfig;
+    startAt?: string;
+    endAt?: string;
   }): Promise<Game> {
     // Validate template
     const template = await this.findTemplateById(data.templateId);
@@ -436,8 +463,8 @@ export class GameService {
     await this.db
       .prepare(
         `INSERT INTO games 
-         (id, name, template_id, image_url, image_width, image_height, correct_position, custom_zone, win_callback_url, mission_tag_id, win_message_config, lose_message_config, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         (id, name, template_id, image_url, image_width, image_height, correct_position, custom_zone, win_callback_url, mission_tag_id, win_message_config, lose_message_config, start_at, end_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .bind(
         id,
@@ -452,6 +479,8 @@ export class GameService {
         data.missionTagId || null,
         data.winMessageConfig ? JSON.stringify(data.winMessageConfig) : null,
         data.loseMessageConfig ? JSON.stringify(data.loseMessageConfig) : null,
+        data.startAt || null,
+        data.endAt || null,
         now,
         now
       )
@@ -472,6 +501,8 @@ export class GameService {
     missionTagId: number | null;
     winMessageConfig: WinMessageConfig | null;
     loseMessageConfig: LoseMessageConfig | null;
+    startAt: string | null;
+    endAt: string | null;
     isActive: boolean;
   }>): Promise<Game | null> {
     const existing = await this.findGameById(id);
@@ -491,6 +522,8 @@ export class GameService {
     if (data.missionTagId !== undefined) { updates.push('mission_tag_id = ?'); values.push(data.missionTagId); }
     if (data.winMessageConfig !== undefined) { updates.push('win_message_config = ?'); values.push(data.winMessageConfig ? JSON.stringify(data.winMessageConfig) : null); }
     if (data.loseMessageConfig !== undefined) { updates.push('lose_message_config = ?'); values.push(data.loseMessageConfig ? JSON.stringify(data.loseMessageConfig) : null); }
+    if (data.startAt !== undefined) { updates.push('start_at = ?'); values.push(data.startAt); }
+    if (data.endAt !== undefined) { updates.push('end_at = ?'); values.push(data.endAt); }
     if (data.isActive !== undefined) { updates.push('is_active = ?'); values.push(data.isActive ? 1 : 0); }
 
     updates.push("updated_at = datetime('now')");
@@ -581,6 +614,8 @@ export class GameService {
         mission_tag_id: null,
         win_message_config: null,
         lose_message_config: null,
+        start_at: null,
+        end_at: null,
         is_active: 1,
         created_at: '',
         updated_at: '',

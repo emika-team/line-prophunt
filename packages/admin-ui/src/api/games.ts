@@ -33,6 +33,8 @@ export interface Game {
   missionTagId?: number | null
   winMessageConfig?: WinMessageConfig | null
   loseMessageConfig?: LoseMessageConfig | null
+  startAt?: string | null
+  endAt?: string | null
   isActive: boolean
   sessionsCount?: number
   winRate?: number
@@ -51,6 +53,8 @@ export interface CreateGameDto {
   missionTagId?: number | null
   winMessageConfig?: WinMessageConfig | null
   loseMessageConfig?: LoseMessageConfig | null
+  startAt?: string | null
+  endAt?: string | null
   isActive: boolean
 }
 

@@ -21,3 +21,4 @@ bucket = "../admin-ui/dist"
 
 # Secrets to set via `wrangler secret put`:
 # - OUTBOUND_API_TOKEN
+# - NOTIFY_API_KEY

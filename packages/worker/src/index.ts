@@ -43,6 +43,17 @@ app.use('/api/admin/*', async (c, next) => {
   return next();
 });
 
+// API Key middleware for notify routes
+app.use('/api/notify/*', async (c, next) => {
+  const apiKey = c.req.header('X-API-Key');
+  
+  if (!apiKey || apiKey !== c.env.NOTIFY_API_KEY) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+  
+  return next();
+});
+
 // Mount routes
 app.route('/api/admin/auth', authRoutes);
 app.route('/api/admin', adminRoutes);

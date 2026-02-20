@@ -6,6 +6,8 @@ export interface Env {
   ADMIN_USERNAME: string;
   ADMIN_PASSWORD: string;
   JWT_SECRET: string;
+  // Notify API Key
+  NOTIFY_API_KEY: string;
   // Redemption API (optional)
   REDEMPTION_API_URL?: string;
   REDEMPTION_API_KEY?: string;
@@ -42,6 +44,8 @@ export interface Game {
   mission_tag_id: number | null;
   win_message_config: string | null; // JSON: { reward, message, buttonText, buttonUrl }
   lose_message_config: string | null; // JSON: { message, buttonText, buttonUrl }
+  start_at: string | null; // ISO datetime - game starts at this time
+  end_at: string | null; // ISO datetime - game ends at this time
   is_active: number;
   created_at: string;
   updated_at: string;
